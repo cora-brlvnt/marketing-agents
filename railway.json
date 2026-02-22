@@ -1,0 +1,13 @@
+{
+  "build": {
+    "builder": "nixpacks",
+    "config": {
+      "nixpacks": {
+        "providers": ["nodejs-pnpm"]
+      }
+    }
+  },
+  "deploy": {
+    "startCommand": "npm start"
+  }
+}
