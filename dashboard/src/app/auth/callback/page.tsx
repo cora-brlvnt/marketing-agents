@@ -1,7 +1,9 @@
 'use client';
 
 import { useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { createClient } from '@supabase/supabase-js';
+import { useRouter } from 'next/navigation';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || '',
@@ -9,49 +11,62 @@ const supabase = createClient(
 );
 
 export default function AuthCallback() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+
   useEffect(() => {
     const handleCallback = async () => {
       try {
-        // Supabase will set session automatically via callback
-        const { data: { session } } = await supabase.auth.getSession();
+        const code = searchParams?.get('code');
+        
+        if (code) {
+          // Exchange code for session
+          const { data, error } = await supabase.auth.exchangeCodeForSession(code);
 
-        if (session?.user?.email) {
-          // Check if email is @berelvant.com
-          if (!session.user.email.endsWith('@berelvant.com')) {
-            await supabase.auth.signOut();
-            window.location.href = '/auth?error=domain';
+          if (error) {
+            console.error('Auth error:', error);
+            router.push('/auth?error=exchange_failed');
             return;
           }
 
-          // Check if user is authorized
-          const { data: authUser } = await supabase
-            .from('authorized_users')
-            .select('*')
-            .eq('email', session.user.email)
-            .single();
+          if (data?.user?.email) {
+            // Check if email is @berelvant.com
+            if (!data.user.email.endsWith('@berelvant.com')) {
+              await supabase.auth.signOut();
+              router.push('/auth?error=domain');
+              return;
+            }
 
-          if (!authUser) {
-            // First-time user, add to authorized_users
-            await supabase.from('authorized_users').insert({
-              email: session.user.email,
-              authorized: false,
-              created_at: new Date(),
-            });
+            // Check if user is authorized
+            const { data: authUser } = await supabase
+              .from('authorized_users')
+              .select('*')
+              .eq('email', data.user.email)
+              .single();
+
+            if (!authUser) {
+              // First-time user, add to authorized_users
+              await supabase.from('authorized_users').insert({
+                email: data.user.email,
+                authorized: false,
+                created_at: new Date(),
+              });
+            }
+
+            // Redirect to dashboard
+            router.push('/');
           }
-
-          // Redirect to dashboard
-          window.location.href = '/';
         } else {
-          window.location.href = '/auth';
+          router.push('/auth?error=no_code');
         }
       } catch (error) {
         console.error('Callback error:', error);
-        window.location.href = '/';
+        router.push('/auth?error=true');
       }
     };
 
     handleCallback();
-  }, []);
+  }, [searchParams, router]);
 
   return (
     <div style={{

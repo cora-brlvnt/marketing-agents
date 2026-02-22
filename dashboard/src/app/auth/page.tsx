@@ -22,7 +22,7 @@ export default function AuthPage() {
     await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: 'https://ieirkjgfompuevwalzga.supabase.co/auth/v1/callback',
+        redirectTo: 'https://marketing-agents-dashboard-production.up.railway.app/auth/callback',
       },
     });
   };
