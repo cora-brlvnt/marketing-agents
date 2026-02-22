@@ -21,9 +21,6 @@ export default function AuthPage() {
   const handleGoogleSignIn = async () => {
     await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: {
-        redirectTo: 'https://marketing-agents-dashboard-production.up.railway.app/auth/callback',
-      },
     });
   };
 
