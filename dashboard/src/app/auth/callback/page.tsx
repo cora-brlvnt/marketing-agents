@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect } from 'react';
-import { useSearchParams } from 'next/navigation';
 import { createClient } from '@supabase/supabase-js';
 
 const supabase = createClient(
@@ -10,61 +9,49 @@ const supabase = createClient(
 );
 
 export default function AuthCallback() {
-  const searchParams = useSearchParams();
-
   useEffect(() => {
     const handleCallback = async () => {
-      // Get the code from URL
-      const code = searchParams?.get('code');
-      
-      if (code) {
-        try {
-          // Exchange code for session
-          const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+      try {
+        // Supabase will set session automatically via callback
+        const { data: { session } } = await supabase.auth.getSession();
 
-          if (error) {
-            console.error('Auth error:', error);
-            window.location.href = '/auth?error=true';
+        if (session?.user?.email) {
+          // Check if email is @berelvant.com
+          if (!session.user.email.endsWith('@berelvant.com')) {
+            await supabase.auth.signOut();
+            window.location.href = '/auth?error=domain';
             return;
           }
 
-          if (data?.user?.email) {
-            // Check if email is @berelvant.com
-            if (!data.user.email.endsWith('@berelvant.com')) {
-              // Reject non-Berelvant emails
-              await supabase.auth.signOut();
-              window.location.href = '/auth?error=domain';
-              return;
-            }
+          // Check if user is authorized
+          const { data: authUser } = await supabase
+            .from('authorized_users')
+            .select('*')
+            .eq('email', session.user.email)
+            .single();
 
-            // Check if user is authorized
-            const { data: authUser } = await supabase
-              .from('authorized_users')
-              .select('*')
-              .eq('email', data.user.email)
-              .single();
-
-            if (!authUser) {
-              // First-time user, add to authorized_users
-              await supabase.from('authorized_users').insert({
-                email: data.user.email,
-                authorized: false, // Pending approval
-                created_at: new Date(),
-              });
-            }
-
-            // Redirect to dashboard
-            window.location.href = '/';
+          if (!authUser) {
+            // First-time user, add to authorized_users
+            await supabase.from('authorized_users').insert({
+              email: session.user.email,
+              authorized: false,
+              created_at: new Date(),
+            });
           }
-        } catch (error) {
-          console.error('Callback error:', error);
-          window.location.href = '/auth?error=true';
+
+          // Redirect to dashboard
+          window.location.href = '/';
+        } else {
+          window.location.href = '/auth';
         }
+      } catch (error) {
+        console.error('Callback error:', error);
+        window.location.href = '/';
       }
     };
 
     handleCallback();
-  }, [searchParams]);
+  }, []);
 
   return (
     <div style={{
