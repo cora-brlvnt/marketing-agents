@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "agents:run": "npx ts-node agent-runner.ts"
+    "agents:run": "curl http://localhost:3000/api/run-agents"
   },
   "dependencies": {
     "next": "14.0.0",

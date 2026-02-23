@@ -1,1 +1,1 @@
-{"/_not-found":"/_not-found","/admin/page":"/admin","/auth/callback/page":"/auth/callback","/auth/page":"/auth","/page":"/","/task/[id]/page":"/task/[id]"}
+{"/_not-found":"/_not-found","/admin/page":"/admin","/api/run-agents/route":"/api/run-agents","/auth/callback/page":"/auth/callback","/page":"/","/task/[id]/page":"/task/[id]","/auth/page":"/auth"}
