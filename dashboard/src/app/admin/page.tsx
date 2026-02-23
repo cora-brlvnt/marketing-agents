@@ -199,9 +199,12 @@ export default function AdminPage() {
       <div style={styles.maxWidth}>
         <div style={styles.header}>
           <h1 style={styles.title}>Admin Panel</h1>
-          <button style={styles.logoutBtn} onClick={handleLogout}>
-            Logout
-          </button>
+          <div style={{ display: 'flex', gap: '12px' }}>
+            <a href="/" style={{ ...styles.logoutBtn, backgroundColor: '#4285F4', textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}>← Dashboard</a>
+            <button style={styles.logoutBtn} onClick={handleLogout}>
+              Logout
+            </button>
+          </div>
         </div>
 
         <div style={styles.card}>
