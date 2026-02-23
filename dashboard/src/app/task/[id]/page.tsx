@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { getSupabase } from '@/lib/supabase';
+import AppShell from '@/components/AppShell';
 import Link from 'next/link';
 
 const supabase = getSupabase();
@@ -102,24 +103,35 @@ export default function TaskDetail() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white"></div>
-      </div>
+      <AppShell>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
+          <div style={{
+            display: 'inline-block',
+            animation: 'spin 1s linear infinite',
+            width: '40px',
+            height: '40px',
+            border: '2px solid transparent',
+            borderTopColor: '#ffffff',
+            borderRadius: '50%',
+          }} />
+          <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+        </div>
+      </AppShell>
     );
   }
 
   if (!task) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-4">
-        <div className="text-center text-slate-400">Task not found</div>
-      </div>
+      <AppShell>
+        <div style={{ padding: '32px', textAlign: 'center', color: '#94a3b8' }}>Task not found</div>
+      </AppShell>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
-      <div className="max-w-6xl mx-auto px-4 py-8">
-        <Link href="/" className="text-blue-400 hover:text-blue-300 mb-6 inline-block">
+    <AppShell>
+    <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '32px' }}>
+        <Link href="/tasks" className="text-blue-400 hover:text-blue-300 mb-6 inline-block">
           ← Back to Tasks
         </Link>
 
@@ -231,6 +243,6 @@ export default function TaskDetail() {
           </div>
         </div>
       </div>
-    </div>
+    </AppShell>
   );
 }

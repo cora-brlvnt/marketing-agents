@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { getSupabase } from '@/lib/supabase';
+import AppShell from '@/components/AppShell';
 
 const supabase = getSupabase();
 
@@ -21,7 +22,7 @@ export default function AdminPage() {
   useEffect(() => {
     const checkAuth = async () => {
       const { data: { session } } = await supabase.auth.getSession();
-      
+
       if (!session || !session.user?.email?.endsWith('@berelvant.com') || session.user.email !== 'principal@berelvant.com') {
         window.location.href = '/';
         return;
@@ -82,55 +83,23 @@ export default function AdminPage() {
     }
   };
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-    window.location.href = '/auth';
-  };
-
   if (loading) {
-    return <div style={{ padding: '20px', color: '#ffffff' }}>Loading...</div>;
+    return <div style={{ padding: '20px', color: '#ffffff', background: '#0f172a', minHeight: '100vh' }}>Loading...</div>;
   }
 
   const styles = {
-    container: {
-      minHeight: '100vh',
-      background: 'linear-gradient(to bottom right, #0f172a, #1e293b, #0f172a)',
-      padding: '32px 16px',
-    },
-    maxWidth: {
-      maxWidth: '80rem',
-      margin: '0 auto',
-    },
-    header: {
-      display: 'flex',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      marginBottom: '32px',
-    },
-    title: {
-      fontSize: '32px',
-      fontWeight: 'bold',
-      color: '#ffffff',
-    },
-    logoutBtn: {
-      backgroundColor: '#e74c3c',
-      color: '#ffffff',
-      padding: '8px 16px',
-      borderRadius: '6px',
-      border: 'none',
-      cursor: 'pointer',
-      fontSize: '14px',
-    },
+    container: { padding: '32px', maxWidth: '1200px', margin: '0 auto' },
+    header: { marginBottom: '32px' },
+    title: { fontSize: '32px', fontWeight: '700', color: '#ffffff', marginBottom: '8px' },
+    subtitle: { color: '#94a3b8', fontSize: '14px' },
     card: {
       backgroundColor: '#1e293b',
       border: '1px solid #334155',
-      borderRadius: '8px',
+      borderRadius: '12px',
       padding: '24px',
       marginBottom: '24px',
     },
-    formGroup: {
-      marginBottom: '16px',
-    },
+    formGroup: { marginBottom: '16px' },
     label: {
       display: 'block',
       color: '#cbd5e1',
@@ -139,18 +108,18 @@ export default function AdminPage() {
     },
     input: {
       width: '100%',
-      padding: '8px 12px',
+      padding: '10px 14px',
       backgroundColor: '#0f172a',
       border: '1px solid #475569',
-      borderRadius: '6px',
+      borderRadius: '8px',
       color: '#ffffff',
       fontSize: '14px',
     },
     button: {
       backgroundColor: '#2563eb',
       color: '#ffffff',
-      padding: '8px 16px',
-      borderRadius: '6px',
+      padding: '10px 20px',
+      borderRadius: '8px',
       border: 'none',
       cursor: 'pointer',
       fontSize: '14px',
@@ -162,17 +131,19 @@ export default function AdminPage() {
     },
     th: {
       backgroundColor: '#0f172a',
-      color: '#ffffff',
-      padding: '12px',
+      color: '#94a3b8',
+      padding: '12px 16px',
       textAlign: 'left' as const,
       borderBottom: '1px solid #334155',
-      fontSize: '14px',
+      fontSize: '12px',
       fontWeight: '600',
+      textTransform: 'uppercase' as const,
+      letterSpacing: '0.05em',
     },
     td: {
       color: '#e2e8f0',
-      padding: '12px',
-      borderBottom: '1px solid #334155',
+      padding: '12px 16px',
+      borderBottom: '1px solid #1e293b',
       fontSize: '14px',
     },
     statusBadge: (authorized: boolean) => ({
@@ -181,34 +152,30 @@ export default function AdminPage() {
       borderRadius: '9999px',
       fontSize: '12px',
       fontWeight: '600',
-      backgroundColor: authorized ? '#10b981' : '#f59e0b',
-      color: authorized ? '#ecfdf5' : '#fef3c7',
+      backgroundColor: authorized ? '#065f46' : '#713f12',
+      color: authorized ? '#6ee7b7' : '#fde68a',
     }),
     actionBtn: {
-      padding: '4px 12px',
+      padding: '6px 12px',
       borderRadius: '6px',
       border: 'none',
       cursor: 'pointer',
       fontSize: '12px',
+      fontWeight: '500',
       marginRight: '8px',
     },
   };
 
   return (
-    <div style={styles.container}>
-      <div style={styles.maxWidth}>
+    <AppShell>
+      <div style={styles.container}>
         <div style={styles.header}>
           <h1 style={styles.title}>Admin Panel</h1>
-          <div style={{ display: 'flex', gap: '12px' }}>
-            <a href="/" style={{ ...styles.logoutBtn, backgroundColor: '#4285F4', textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}>← Dashboard</a>
-            <button style={styles.logoutBtn} onClick={handleLogout}>
-              Logout
-            </button>
-          </div>
+          <p style={styles.subtitle}>Manage user access and permissions</p>
         </div>
 
         <div style={styles.card}>
-          <h2 style={{ color: '#ffffff', marginBottom: '16px' }}>Invite New User</h2>
+          <h2 style={{ color: '#ffffff', fontSize: '18px', fontWeight: '600', marginBottom: '16px' }}>Invite New User</h2>
           <form onSubmit={handleInvite}>
             <div style={styles.formGroup}>
               <label style={styles.label}>Email (@berelvant.com)</label>
@@ -227,8 +194,12 @@ export default function AdminPage() {
           </form>
         </div>
 
-        <div style={styles.card}>
-          <h2 style={{ color: '#ffffff', marginBottom: '16px' }}>Authorized Users ({users.length})</h2>
+        <div style={{ ...styles.card, padding: 0, overflow: 'hidden' }}>
+          <div style={{ padding: '16px 24px', borderBottom: '1px solid #334155' }}>
+            <h2 style={{ color: '#ffffff', fontSize: '18px', fontWeight: '600' }}>
+              Authorized Users ({users.length})
+            </h2>
+          </div>
           <table style={styles.table}>
             <thead>
               <tr>
@@ -240,8 +211,16 @@ export default function AdminPage() {
             </thead>
             <tbody>
               {users.map((u) => (
-                <tr key={u.id}>
-                  <td style={styles.td}>{u.email}</td>
+                <tr
+                  key={u.id}
+                  onMouseEnter={(e) => {
+                    (e.currentTarget as HTMLElement).style.backgroundColor = '#0f172a';
+                  }}
+                  onMouseLeave={(e) => {
+                    (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent';
+                  }}
+                >
+                  <td style={{ ...styles.td, fontWeight: '500', color: '#ffffff' }}>{u.email}</td>
                   <td style={styles.td}>
                     <span style={styles.statusBadge(u.authorized)}>
                       {u.authorized ? 'Active' : 'Pending'}
@@ -254,7 +233,7 @@ export default function AdminPage() {
                     <button
                       style={{
                         ...styles.actionBtn,
-                        backgroundColor: u.authorized ? '#f59e0b' : '#10b981',
+                        backgroundColor: u.authorized ? '#b45309' : '#065f46',
                         color: '#ffffff',
                       }}
                       onClick={() => handleToggleAccess(u.id, u.authorized)}
@@ -264,7 +243,7 @@ export default function AdminPage() {
                     <button
                       style={{
                         ...styles.actionBtn,
-                        backgroundColor: '#e74c3c',
+                        backgroundColor: '#991b1b',
                         color: '#ffffff',
                       }}
                       onClick={() => handleDeleteUser(u.id)}
@@ -278,6 +257,6 @@ export default function AdminPage() {
           </table>
         </div>
       </div>
-    </div>
+    </AppShell>
   );
 }
