@@ -219,24 +219,44 @@ export default function TaskDetail() {
                 {deliverables.length === 0 ? (
                   <p className="text-slate-400">Waiting for deliverables...</p>
                 ) : (
-                  deliverables.map((deliverable) => (
-                    <div key={deliverable.id} className="bg-slate-700 rounded-lg p-4">
-                      <div className="flex items-center justify-between mb-2">
-                        <div>
-                          <span className="font-semibold text-blue-400">{deliverable.agent_name}</span>
-                          <span className="ml-3 text-xs bg-slate-600 px-2 py-1 rounded text-slate-300">
-                            {deliverable.type}
+                  deliverables.map((deliverable) => {
+                    let imageData: { url?: string; prompt?: string } | null = null;
+                    if (deliverable.type === 'image') {
+                      try { imageData = JSON.parse(deliverable.content); } catch { /* not json */ }
+                    }
+
+                    return (
+                      <div key={deliverable.id} className="bg-slate-700 rounded-lg p-4">
+                        <div className="flex items-center justify-between mb-2">
+                          <div>
+                            <span className="font-semibold text-blue-400">{deliverable.agent_name}</span>
+                            <span className="ml-3 text-xs bg-slate-600 px-2 py-1 rounded text-slate-300">
+                              {deliverable.type}
+                            </span>
+                          </div>
+                          <span className="text-xs text-slate-500">
+                            {new Date(deliverable.created_at).toLocaleTimeString()}
                           </span>
                         </div>
-                        <span className="text-xs text-slate-500">
-                          {new Date(deliverable.created_at).toLocaleTimeString()}
-                        </span>
+                        {imageData?.url ? (
+                          <div className="mt-3">
+                            <img
+                              src={imageData.url}
+                              alt={imageData.prompt || 'Generated ad creative'}
+                              className="rounded-lg max-w-full max-h-96 object-contain"
+                            />
+                            {imageData.prompt && (
+                              <p className="text-slate-400 text-xs mt-2 italic">{imageData.prompt}</p>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="mt-3 bg-slate-800 rounded p-3 max-h-80 overflow-y-auto">
+                            <p className="text-slate-300 whitespace-pre-wrap text-sm">{deliverable.content}</p>
+                          </div>
+                        )}
                       </div>
-                      <div className="mt-3 bg-slate-800 rounded p-3 max-h-40 overflow-y-auto">
-                        <p className="text-slate-300 whitespace-pre-wrap text-sm">{deliverable.content}</p>
-                      </div>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
             )}

@@ -9,6 +9,51 @@ const supabase = createClient(
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY || '' });
 
+// --- Gemini Image Generation ---
+async function generateImage(prompt: string, taskId: string, name: string): Promise<string | null> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) return null;
+
+  try {
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { responseModalities: ['TEXT', 'IMAGE'] },
+        }),
+      }
+    );
+
+    const data = await response.json();
+    const parts = data?.candidates?.[0]?.content?.parts || [];
+    const imagePart = parts.find((p: any) => p.inlineData?.mimeType?.startsWith('image/'));
+
+    if (!imagePart) return null;
+
+    // Upload to Supabase Storage
+    const imageBuffer = Buffer.from(imagePart.inlineData.data, 'base64');
+    const filename = `${taskId}/${name}.png`;
+
+    const { error } = await supabase.storage
+      .from('deliverables')
+      .upload(filename, imageBuffer, { contentType: 'image/png', upsert: true });
+
+    if (error) {
+      console.error('Storage upload error:', error);
+      return null;
+    }
+
+    const { data: urlData } = supabase.storage.from('deliverables').getPublicUrl(filename);
+    return urlData?.publicUrl || null;
+  } catch (err) {
+    console.error('Gemini image error:', err);
+    return null;
+  }
+}
+
 interface Task {
   id: string;
   title: string;
@@ -105,22 +150,19 @@ Write the actual copy — not descriptions of what to write. Make it compelling 
   },
 
   Pixel: {
-    system: `You are Pixel, an expert marketing designer and art director. Provide detailed creative briefs:
-1. Visual concept and mood board direction
-2. Color palette (hex codes) with primary, secondary, accent
-3. Typography recommendations (font pairings)
-4. Ad creative specs for each platform:
-   - Meta (1080x1080, 1080x1920, 1200x628)
-   - Google Display (300x250, 728x90, 160x600)
-   - LinkedIn (1200x627)
-5. Detailed layout descriptions for each ad (what goes where, visual hierarchy)
-6. Image/photography style guide
-7. Brand consistency notes
+    system: `You are Pixel, an expert marketing designer and art director. Provide:
+1. Visual concept direction
+2. Color palette (hex codes)
+3. Typography recommendations
+4. Detailed image generation prompts for ad creatives (3 variations)
+   - Each prompt should be a detailed description suitable for AI image generation
+   - Include: style, colors, composition, text overlay, mood
+5. Platform specs (Meta 1080x1080, Google 300x250, LinkedIn 1200x627)
 
-Be specific enough that a designer could execute from your brief.`,
+Format your image prompts clearly with "IMAGE_PROMPT_1:", "IMAGE_PROMPT_2:", "IMAGE_PROMPT_3:" prefixes.`,
     buildPrompt: (task, client) => {
       const ctx = client ? `\nClient: ${client.name}\nTone: ${client.tone_of_voice}` : '';
-      return `Campaign: ${task.title}\nBrief: ${task.description}${ctx}\n\nProvide your complete creative brief.`;
+      return `Campaign: ${task.title}\nBrief: ${task.description}${ctx}\n\nProvide your creative direction and 3 image generation prompts.`;
     },
   },
 
@@ -220,6 +262,27 @@ export async function GET(request: Request) {
               type: agentName.toLowerCase(),
               content: aiResponse,
             });
+
+            // Pixel agent: also generate images from the prompts
+            if (agentName === 'Pixel') {
+              const imagePrompts = aiResponse.split(/IMAGE_PROMPT_\d+:\s*/).filter(s => s.trim().length > 10);
+              let imageIndex = 0;
+              for (const rawPrompt of imagePrompts.slice(0, 3)) {
+                imageIndex++;
+                const cleanPrompt = rawPrompt.trim().split('\n')[0].trim();
+                if (cleanPrompt.length > 10) {
+                  const imageUrl = await generateImage(cleanPrompt, task.id, `ad-creative-${imageIndex}`);
+                  if (imageUrl) {
+                    await supabase.from('deliverables').insert({
+                      task_id: task.id,
+                      agent_name: 'Pixel',
+                      type: 'image',
+                      content: JSON.stringify({ url: imageUrl, prompt: cleanPrompt, index: imageIndex }),
+                    });
+                  }
+                }
+              }
+            }
 
             results.push(`✓ ${agentName}`);
           } catch (error) {
