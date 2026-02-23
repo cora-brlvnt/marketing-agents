@@ -8,112 +8,117 @@ import Link from 'next/link';
 
 const supabase = getSupabase();
 
-const AGENTS = ['Vision', 'Apex', 'Nova', 'Echo', 'Pixel', 'Reel', 'Social'];
+const WAVE_1_AGENTS = ['Vision', 'Apex', 'Nova'];
+const WAVE_2_AGENTS = ['Echo', 'Pixel', 'Reel', 'Social'];
+const ALL_AGENTS = [...WAVE_1_AGENTS, ...WAVE_2_AGENTS];
 
 interface Task {
   id: string;
   title: string;
   description: string;
   status: string;
+  client_id?: string;
+  drive_folder_url?: string;
+  created_by?: string;
   created_at: string;
 }
 
-interface Comment {
+interface AgentRun {
   id: string;
+  task_id: string;
   agent_name: string;
-  message: string;
+  wave: number;
+  status: string;
+  started_at?: string;
+  completed_at?: string;
+  output_summary?: string;
+  output_data?: any;
+  output_files?: Array<{ name: string; type: string; url: string }>;
+  error?: string;
   created_at: string;
 }
 
-interface Deliverable {
+interface Client {
   id: string;
-  agent_name: string;
-  type: string;
-  content: string;
-  created_at: string;
+  name: string;
+  company?: string;
+  domain?: string;
 }
 
 export default function TaskDetail() {
   const params = useParams();
   const id = (params?.id || '') as string;
   const [task, setTask] = useState<Task | null>(null);
-  const [comments, setComments] = useState<Comment[]>([]);
-  const [deliverables, setDeliverables] = useState<Deliverable[]>([]);
-  const [activeTab, setActiveTab] = useState<'comments' | 'deliverables'>('comments');
+  const [agentRuns, setAgentRuns] = useState<AgentRun[]>([]);
+  const [client, setClient] = useState<Client | null>(null);
+  const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!id) return;
+    fetchData();
 
-    fetchTaskData();
-
-    const commentsSubscription = supabase
-      .channel(`comments:${id}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'task_comments', filter: `task_id=eq.${id}` }, () => {
-        fetchComments();
+    const subscription = supabase
+      .channel(`agent_runs:${id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'agent_runs', filter: `task_id=eq.${id}` }, () => {
+        fetchAgentRuns();
       })
       .subscribe();
 
-    const deliverablesSubscription = supabase
-      .channel(`deliverables:${id}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'deliverables', filter: `task_id=eq.${id}` }, () => {
-        fetchDeliverables();
-      })
-      .subscribe();
-
-    return () => {
-      commentsSubscription.unsubscribe();
-      deliverablesSubscription.unsubscribe();
-    };
+    return () => { subscription.unsubscribe(); };
   }, [id]);
 
-  const fetchTaskData = async () => {
+  const fetchData = async () => {
     const { data: taskData } = await supabase.from('tasks').select('*').eq('id', id).single();
-    if (taskData) setTask(taskData);
-    fetchComments();
-    fetchDeliverables();
+    if (taskData) {
+      setTask(taskData);
+      if (taskData.client_id) {
+        const { data: clientData } = await supabase.from('clients').select('*').eq('id', taskData.client_id).single();
+        if (clientData) setClient(clientData);
+      }
+    }
+    await fetchAgentRuns();
     setLoading(false);
   };
 
-  const fetchComments = async () => {
+  const fetchAgentRuns = async () => {
     const { data } = await supabase
-      .from('task_comments')
+      .from('agent_runs')
       .select('*')
       .eq('task_id', id)
-      .order('created_at', { ascending: true });
-    if (data) setComments(data);
+      .order('wave', { ascending: true })
+      .order('agent_name', { ascending: true });
+    if (data) setAgentRuns(data);
   };
 
-  const fetchDeliverables = async () => {
-    const { data } = await supabase
-      .from('deliverables')
-      .select('*')
-      .eq('task_id', id)
-      .order('created_at', { ascending: true });
-    if (data) setDeliverables(data);
+  const getRunForAgent = (name: string) => agentRuns.find(r => r.agent_name === name);
+
+  const statusColor = (status: string) => {
+    switch (status) {
+      case 'complete': return '#22c55e';
+      case 'running': return '#3b82f6';
+      case 'error': return '#ef4444';
+      default: return '#64748b';
+    }
   };
 
-  const agentProgress = AGENTS.map((agent) => ({
-    agent,
-    hasComment: comments.some((c) => c.agent_name === agent),
-    hasDeliverable: deliverables.some((d) => d.agent_name === agent),
-  }));
+  const statusLabel = (status: string) => {
+    switch (status) {
+      case 'complete': return '✓ Complete';
+      case 'running': return '⟳ Running';
+      case 'error': return '✗ Error';
+      default: return '○ Pending';
+    }
+  };
 
-  const completedAgents = agentProgress.filter((a) => a.hasDeliverable).length;
+  const completedCount = agentRuns.filter(r => r.status === 'complete').length;
+  const selectedRun = selectedAgent ? getRunForAgent(selectedAgent) : null;
 
   if (loading) {
     return (
       <AppShell>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
-          <div style={{
-            display: 'inline-block',
-            animation: 'spin 1s linear infinite',
-            width: '40px',
-            height: '40px',
-            border: '2px solid transparent',
-            borderTopColor: '#ffffff',
-            borderRadius: '50%',
-          }} />
+          <div style={{ width: 40, height: 40, border: '2px solid transparent', borderTopColor: '#fff', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
           <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
         </div>
       </AppShell>
@@ -123,145 +128,215 @@ export default function TaskDetail() {
   if (!task) {
     return (
       <AppShell>
-        <div style={{ padding: '32px', textAlign: 'center', color: '#94a3b8' }}>Task not found</div>
+        <div style={{ padding: 32, textAlign: 'center', color: '#94a3b8' }}>Task not found</div>
       </AppShell>
     );
   }
 
   return (
     <AppShell>
-    <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '32px' }}>
-        <Link href="/tasks" className="text-blue-400 hover:text-blue-300 mb-6 inline-block">
+      <div style={{ maxWidth: 1200, margin: '0 auto', padding: 32 }}>
+        {/* Header */}
+        <Link href="/tasks" style={{ color: '#60a5fa', textDecoration: 'none', display: 'inline-block', marginBottom: 24 }}>
           ← Back to Tasks
         </Link>
 
-        <div className="bg-slate-800 rounded-lg border border-slate-700 p-8 mb-8">
-          <h1 className="text-4xl font-bold text-white mb-4">{task.title}</h1>
-          <p className="text-slate-400 mb-6">{task.description}</p>
+        <div style={{ background: '#1e293b', borderRadius: 12, border: '1px solid #334155', padding: 32, marginBottom: 32 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <div>
+              <h1 style={{ fontSize: 28, fontWeight: 700, color: '#fff', margin: '0 0 8px' }}>{task.title}</h1>
+              <p style={{ color: '#94a3b8', margin: '0 0 16px', maxWidth: 700 }}>{task.description}</p>
+              {client && (
+                <span style={{ background: '#334155', color: '#e2e8f0', padding: '4px 12px', borderRadius: 6, fontSize: 13 }}>
+                  Client: {client.name}{client.domain ? ` (${client.domain})` : ''}
+                </span>
+              )}
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <div style={{
+                background: task.status === 'complete' ? '#166534' : task.status === 'processing' ? '#1e3a5f' : '#334155',
+                color: '#fff', padding: '6px 16px', borderRadius: 8, fontSize: 14, fontWeight: 600,
+              }}>
+                {task.status.toUpperCase()}
+              </div>
+              {task.drive_folder_url && (
+                <a href={task.drive_folder_url} target="_blank" rel="noopener noreferrer"
+                  style={{ color: '#60a5fa', fontSize: 13, display: 'block', marginTop: 8 }}>
+                  📁 Open Drive Folder
+                </a>
+              )}
+            </div>
+          </div>
 
-          <div className="flex items-center gap-4">
-            <div className="bg-slate-700 rounded-lg px-4 py-2">
-              <span className="text-slate-300 text-sm">
-                {completedAgents} of {AGENTS.length} agents complete
+          {/* Progress bar */}
+          <div style={{ marginTop: 24 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+              <span style={{ color: '#94a3b8', fontSize: 13 }}>{completedCount} of {ALL_AGENTS.length} agents complete</span>
+              <span style={{ color: '#94a3b8', fontSize: 13 }}>
+                {agentRuns.some(r => r.wave === 1 && r.status !== 'complete') ? 'Wave 1' :
+                 agentRuns.some(r => r.wave === 2 && r.status === 'running') ? 'Wave 2' :
+                 completedCount === 7 ? 'Done' : 'Waiting'}
               </span>
-              <div className="w-48 h-2 bg-slate-600 rounded-full mt-2 overflow-hidden">
-                <div
-                  className="h-full bg-blue-600 transition-all"
-                  style={{ width: `${(completedAgents / AGENTS.length) * 100}%` }}
-                />
-              </div>
+            </div>
+            <div style={{ width: '100%', height: 6, background: '#334155', borderRadius: 3 }}>
+              <div style={{
+                width: `${(completedCount / ALL_AGENTS.length) * 100}%`,
+                height: '100%', background: '#3b82f6', borderRadius: 3, transition: 'width 0.5s',
+              }} />
             </div>
           </div>
         </div>
 
-        <div className="grid grid-cols-7 gap-2 mb-8">
-          {agentProgress.map((ap) => (
-            <div
-              key={ap.agent}
-              className="bg-slate-800 rounded-lg border border-slate-700 p-3 text-center"
-            >
-              <p className="text-sm font-medium text-white mb-2">{ap.agent}</p>
-              <div className="flex justify-center gap-1">
-                {ap.hasComment && <span className="text-xs bg-yellow-600 px-2 py-1 rounded text-white">💬</span>}
-                {ap.hasDeliverable && <span className="text-xs bg-green-600 px-2 py-1 rounded text-white">✓</span>}
+        {/* Agent Grid */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16, marginBottom: 32 }}>
+          {/* Wave 1 */}
+          <div style={{ gridColumn: '1 / -1' }}>
+            <h3 style={{ color: '#94a3b8', fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, margin: '0 0 12px' }}>
+              Wave 1 — Data & Strategy
+            </h3>
+          </div>
+          {WAVE_1_AGENTS.map(agent => {
+            const run = getRunForAgent(agent);
+            const isSelected = selectedAgent === agent;
+            return (
+              <div key={agent} onClick={() => setSelectedAgent(isSelected ? null : agent)} style={{
+                background: isSelected ? '#1e3a5f' : '#1e293b',
+                border: `1px solid ${isSelected ? '#3b82f6' : '#334155'}`,
+                borderRadius: 10, padding: 16, cursor: 'pointer', transition: 'all 0.15s',
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ color: '#fff', fontWeight: 600, fontSize: 15 }}>{agent}</span>
+                  <span style={{ color: statusColor(run?.status || 'pending'), fontSize: 13 }}>
+                    {statusLabel(run?.status || 'pending')}
+                  </span>
+                </div>
+                {run?.output_summary && (
+                  <p style={{ color: '#94a3b8', fontSize: 12, marginTop: 8, lineHeight: 1.4 }}>
+                    {run.output_summary.substring(0, 120)}{run.output_summary.length > 120 ? '...' : ''}
+                  </p>
+                )}
+                {run?.output_files && run.output_files.length > 0 && (
+                  <div style={{ marginTop: 8, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    {run.output_files.map((f, i) => (
+                      <a key={i} href={f.url} target="_blank" rel="noopener noreferrer"
+                        style={{ background: '#334155', color: '#60a5fa', padding: '2px 8px', borderRadius: 4, fontSize: 11, textDecoration: 'none' }}>
+                        {f.type === 'sheet' ? '📊' : f.type === 'doc' ? '📝' : f.type === 'image' ? '🖼️' : '📄'} {f.name}
+                      </a>
+                    ))}
+                  </div>
+                )}
+                {run?.error && (
+                  <p style={{ color: '#ef4444', fontSize: 12, marginTop: 8 }}>Error: {run.error.substring(0, 100)}</p>
+                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
+
+          {/* Wave 2 */}
+          <div style={{ gridColumn: '1 / -1', marginTop: 8 }}>
+            <h3 style={{ color: '#94a3b8', fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, margin: '0 0 12px' }}>
+              Wave 2 — Creative & Execution
+            </h3>
+          </div>
+          {WAVE_2_AGENTS.map(agent => {
+            const run = getRunForAgent(agent);
+            const isSelected = selectedAgent === agent;
+            return (
+              <div key={agent} onClick={() => setSelectedAgent(isSelected ? null : agent)} style={{
+                background: isSelected ? '#1e3a5f' : '#1e293b',
+                border: `1px solid ${isSelected ? '#3b82f6' : '#334155'}`,
+                borderRadius: 10, padding: 16, cursor: 'pointer', transition: 'all 0.15s',
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ color: '#fff', fontWeight: 600, fontSize: 15 }}>{agent}</span>
+                  <span style={{ color: statusColor(run?.status || 'pending'), fontSize: 13 }}>
+                    {statusLabel(run?.status || 'pending')}
+                  </span>
+                </div>
+                {run?.output_summary && (
+                  <p style={{ color: '#94a3b8', fontSize: 12, marginTop: 8, lineHeight: 1.4 }}>
+                    {run.output_summary.substring(0, 120)}{run.output_summary.length > 120 ? '...' : ''}
+                  </p>
+                )}
+                {run?.output_files && run.output_files.length > 0 && (
+                  <div style={{ marginTop: 8, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    {run.output_files.map((f, i) => (
+                      <a key={i} href={f.url} target="_blank" rel="noopener noreferrer"
+                        style={{ background: '#334155', color: '#60a5fa', padding: '2px 8px', borderRadius: 4, fontSize: 11, textDecoration: 'none' }}>
+                        {f.type === 'sheet' ? '📊' : f.type === 'doc' ? '📝' : f.type === 'image' ? '🖼️' : '📄'} {f.name}
+                      </a>
+                    ))}
+                  </div>
+                )}
+                {run?.error && (
+                  <p style={{ color: '#ef4444', fontSize: 12, marginTop: 8 }}>Error: {run.error.substring(0, 100)}</p>
+                )}
+              </div>
+            );
+          })}
         </div>
 
-        <div className="bg-slate-800 rounded-lg border border-slate-700 overflow-hidden">
-          <div className="flex border-b border-slate-700">
-            <button
-              onClick={() => setActiveTab('comments')}
-              className={`flex-1 px-6 py-4 font-semibold transition-colors ${
-                activeTab === 'comments'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-slate-800 text-slate-400 hover:text-white'
-              }`}
-            >
-              Comments ({comments.length})
-            </button>
-            <button
-              onClick={() => setActiveTab('deliverables')}
-              className={`flex-1 px-6 py-4 font-semibold transition-colors ${
-                activeTab === 'deliverables'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-slate-800 text-slate-400 hover:text-white'
-              }`}
-            >
-              Deliverables ({deliverables.length})
-            </button>
-          </div>
+        {/* Selected Agent Detail */}
+        {selectedRun && (
+          <div style={{ background: '#1e293b', borderRadius: 12, border: '1px solid #3b82f6', padding: 24 }}>
+            <h2 style={{ color: '#fff', fontSize: 20, fontWeight: 700, margin: '0 0 4px' }}>
+              {selectedRun.agent_name} — Wave {selectedRun.wave}
+            </h2>
+            <span style={{ color: statusColor(selectedRun.status), fontSize: 14 }}>
+              {statusLabel(selectedRun.status)}
+            </span>
 
-          <div className="p-6">
-            {activeTab === 'comments' && (
-              <div className="space-y-4">
-                {comments.length === 0 ? (
-                  <p className="text-slate-400">Waiting for agent feedback...</p>
-                ) : (
-                  comments.map((comment) => (
-                    <div key={comment.id} className="bg-slate-700 rounded-lg p-4">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="font-semibold text-blue-400">{comment.agent_name}</span>
-                        <span className="text-xs text-slate-500">
-                          {new Date(comment.created_at).toLocaleTimeString()}
-                        </span>
-                      </div>
-                      <p className="text-slate-300">{comment.message}</p>
-                    </div>
-                  ))
-                )}
+            {selectedRun.output_summary && (
+              <div style={{ marginTop: 16 }}>
+                <h4 style={{ color: '#94a3b8', fontSize: 12, textTransform: 'uppercase', marginBottom: 8 }}>Summary</h4>
+                <p style={{ color: '#e2e8f0', fontSize: 14, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
+                  {selectedRun.output_summary}
+                </p>
               </div>
             )}
 
-            {activeTab === 'deliverables' && (
-              <div className="space-y-4">
-                {deliverables.length === 0 ? (
-                  <p className="text-slate-400">Waiting for deliverables...</p>
-                ) : (
-                  deliverables.map((deliverable) => {
-                    let imageData: { url?: string; prompt?: string } | null = null;
-                    if (deliverable.type === 'image') {
-                      try { imageData = JSON.parse(deliverable.content); } catch { /* not json */ }
-                    }
-
-                    return (
-                      <div key={deliverable.id} className="bg-slate-700 rounded-lg p-4">
-                        <div className="flex items-center justify-between mb-2">
-                          <div>
-                            <span className="font-semibold text-blue-400">{deliverable.agent_name}</span>
-                            <span className="ml-3 text-xs bg-slate-600 px-2 py-1 rounded text-slate-300">
-                              {deliverable.type}
-                            </span>
-                          </div>
-                          <span className="text-xs text-slate-500">
-                            {new Date(deliverable.created_at).toLocaleTimeString()}
-                          </span>
-                        </div>
-                        {imageData?.url ? (
-                          <div className="mt-3">
-                            <img
-                              src={imageData.url}
-                              alt={imageData.prompt || 'Generated ad creative'}
-                              className="rounded-lg max-w-full max-h-96 object-contain"
-                            />
-                            {imageData.prompt && (
-                              <p className="text-slate-400 text-xs mt-2 italic">{imageData.prompt}</p>
-                            )}
-                          </div>
-                        ) : (
-                          <div className="mt-3 bg-slate-800 rounded p-3 max-h-80 overflow-y-auto">
-                            <p className="text-slate-300 whitespace-pre-wrap text-sm">{deliverable.content}</p>
-                          </div>
-                        )}
+            {selectedRun.output_files && selectedRun.output_files.length > 0 && (
+              <div style={{ marginTop: 16 }}>
+                <h4 style={{ color: '#94a3b8', fontSize: 12, textTransform: 'uppercase', marginBottom: 8 }}>Files</h4>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {selectedRun.output_files.map((f, i) => (
+                    <a key={i} href={f.url} target="_blank" rel="noopener noreferrer" style={{
+                      display: 'flex', alignItems: 'center', gap: 10,
+                      background: '#0f172a', padding: '10px 16px', borderRadius: 8, textDecoration: 'none',
+                    }}>
+                      <span style={{ fontSize: 20 }}>
+                        {f.type === 'sheet' ? '📊' : f.type === 'doc' ? '📝' : f.type === 'image' ? '🖼️' : '📄'}
+                      </span>
+                      <div>
+                        <div style={{ color: '#60a5fa', fontSize: 14, fontWeight: 500 }}>{f.name}</div>
+                        <div style={{ color: '#64748b', fontSize: 11 }}>Google {f.type === 'sheet' ? 'Sheet' : f.type === 'doc' ? 'Doc' : f.type}</div>
                       </div>
-                    );
-                  })
-                )}
+                    </a>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {selectedRun.error && (
+              <div style={{ marginTop: 16, background: '#450a0a', borderRadius: 8, padding: 12 }}>
+                <h4 style={{ color: '#ef4444', fontSize: 12, textTransform: 'uppercase', marginBottom: 4 }}>Error</h4>
+                <p style={{ color: '#fca5a5', fontSize: 13 }}>{selectedRun.error}</p>
+              </div>
+            )}
+
+            {selectedRun.output_data && (
+              <div style={{ marginTop: 16 }}>
+                <h4 style={{ color: '#94a3b8', fontSize: 12, textTransform: 'uppercase', marginBottom: 8 }}>Structured Data</h4>
+                <pre style={{
+                  background: '#0f172a', padding: 16, borderRadius: 8, overflow: 'auto', maxHeight: 300,
+                  color: '#94a3b8', fontSize: 12, lineHeight: 1.5,
+                }}>
+                  {JSON.stringify(selectedRun.output_data, null, 2)}
+                </pre>
               </div>
             )}
           </div>
-        </div>
+        )}
       </div>
     </AppShell>
   );

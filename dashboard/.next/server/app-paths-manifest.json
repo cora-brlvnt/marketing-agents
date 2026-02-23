@@ -1,14 +1,13 @@
 {
   "/_not-found": "app/_not-found.js",
   "/admin/page": "app/admin/page.js",
-  "/api/run-agents/route": "app/api/run-agents/route.js",
   "/auth/callback/page": "app/auth/callback/page.js",
   "/auth/page": "app/auth/page.js",
   "/page": "app/page.js",
-  "/settings/page": "app/settings/page.js",
-  "/team/page": "app/team/page.js",
+  "/task/[id]/page": "app/task/[id]/page.js",
   "/tasks/page": "app/tasks/page.js",
-  "/workflows/page": "app/workflows/page.js",
+  "/team/page": "app/team/page.js",
+  "/settings/page": "app/settings/page.js",
   "/clients/page": "app/clients/page.js",
-  "/task/[id]/page": "app/task/[id]/page.js"
+  "/workflows/page": "app/workflows/page.js"
 }

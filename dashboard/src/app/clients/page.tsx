@@ -16,6 +16,8 @@ export default function ClientsPage() {
     email: '',
     company: '',
     industry: '',
+    domain: '',
+    tone_of_voice: '',
     status: 'active',
   });
 
@@ -50,7 +52,7 @@ export default function ClientsPage() {
         const { error } = await supabase.from('clients').insert([formData]);
         if (error) throw error;
       }
-      setFormData({ name: '', email: '', company: '', industry: '', status: 'active' });
+      setFormData({ name: '', email: '', company: '', industry: '', domain: '', tone_of_voice: '', status: 'active' });
       setEditingId(null);
       setShowForm(false);
       fetchClients();
@@ -76,6 +78,8 @@ export default function ClientsPage() {
       email: client.email || '',
       company: client.company || '',
       industry: client.industry || '',
+      domain: client.domain || '',
+      tone_of_voice: client.tone_of_voice || '',
       status: client.status || 'active',
     });
     setEditingId(client.id);
@@ -227,7 +231,7 @@ export default function ClientsPage() {
           <button
             style={styles.addBtn}
             onClick={() => {
-              setFormData({ name: '', email: '', company: '', industry: '', status: 'active' });
+              setFormData({ name: '', email: '', company: '', industry: '', domain: '', tone_of_voice: '', status: 'active' });
               setEditingId(null);
               setShowForm(!showForm);
             }}
@@ -270,6 +274,22 @@ export default function ClientsPage() {
                   placeholder="Industry"
                   value={formData.industry}
                   onChange={(e) => setFormData({ ...formData, industry: e.target.value })}
+                  style={styles.input}
+                />
+              </div>
+              <div style={styles.formGrid}>
+                <input
+                  type="text"
+                  placeholder="Website domain (e.g. forex.com)"
+                  value={formData.domain}
+                  onChange={(e) => setFormData({ ...formData, domain: e.target.value })}
+                  style={styles.input}
+                />
+                <input
+                  type="text"
+                  placeholder="Tone of voice (e.g. professional, bold)"
+                  value={formData.tone_of_voice}
+                  onChange={(e) => setFormData({ ...formData, tone_of_voice: e.target.value })}
                   style={styles.input}
                 />
               </div>
