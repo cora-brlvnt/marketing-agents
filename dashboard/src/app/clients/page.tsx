@@ -18,7 +18,7 @@ type AssetFile = {
 
 const EMPTY_FORM = {
   name: '', email: '', company: '', industry: '', domain: '', website: '', website_assets: '',
-  tone_of_voice: '', status: 'active', tagline: '', notes: '',
+  status: 'active', tagline: '', notes: '',
   poc_contacts: '',
 
   brand_assets_hub: '',
@@ -63,7 +63,6 @@ export default function ClientsPage() {
       domain: client.domain || '',
       website: client.website || '',
       website_assets: client.visual_style?.website_assets || '',
-      tone_of_voice: client.tone_of_voice || '',
       status: client.status || 'active',
       tagline: client.tagline || '',
       notes: client.notes || '',
@@ -98,7 +97,6 @@ export default function ClientsPage() {
       industry: formData.industry || null,
       domain: formData.domain || null,
       website: formData.website || null,
-      tone_of_voice: formData.tone_of_voice || null,
       status: formData.status,
       tagline: formData.tagline || null,
       notes: formData.notes || null,
@@ -337,11 +335,6 @@ export default function ClientsPage() {
                 <div>
                   <div style={s.sectionTitle}>Brand Asset Intake</div>
                   <p style={{ color: '#64748b', fontSize: 13, marginBottom: 16 }}>No manual brand fields. Upload source files (guidelines, logos, contracts, briefs) directly.</p>
-
-                  <div style={s.field}>
-                    <label style={s.label}>Tone of Voice (optional)</label>
-                    <input style={s.input} value={formData.tone_of_voice} onChange={e => set('tone_of_voice', e.target.value)} placeholder="Can be filled later from brand docs" />
-                  </div>
 
                   <div style={s.field}>
                     <label style={s.label}>Primary Brand Asset Hub (optional)</label>
