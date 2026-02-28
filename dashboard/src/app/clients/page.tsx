@@ -38,6 +38,9 @@ export default function ClientsPage() {
   const [formData, setFormData] = useState({ ...EMPTY_FORM });
   const [activeSection, setActiveSection] = useState<Section>('basics');
   const [integrationPick, setIntegrationPick] = useState('GA4');
+  const [brandLinkType, setBrandLinkType] = useState('Logos');
+  const [brandLinkUrl, setBrandLinkUrl] = useState('');
+  const [brandLinkNotes, setBrandLinkNotes] = useState('');
   const [brandFiles, setBrandFiles] = useState<AssetFile[]>([]);
   const [docFiles, setDocFiles] = useState<AssetFile[]>([]);
   const [uploading, setUploading] = useState(false);
@@ -237,6 +240,15 @@ export default function ClientsPage() {
     set('enabled_channels', current.filter(x => x !== name).join(', '));
   }
 
+  function addBrandLink() {
+    if (!brandLinkUrl.trim()) return;
+    const line = `${brandLinkType} | ${brandLinkUrl.trim()} | ${brandLinkNotes.trim() || '-'}`;
+    const next = formData.brand_asset_links ? `${formData.brand_asset_links}\n${line}` : line;
+    set('brand_asset_links', next);
+    setBrandLinkUrl('');
+    setBrandLinkNotes('');
+  }
+
   const set = (key: string, val: string) => setFormData(prev => ({ ...prev, [key]: val }));
   const enabledChannels = formData.enabled_channels ? formData.enabled_channels.split(',').map(s => s.trim()).filter(Boolean) : [];
 
@@ -264,7 +276,7 @@ export default function ClientsPage() {
             <h1 style={{ fontSize: 28, fontWeight: 700, color: '#fff', margin: 0 }}>Clients</h1>
             <p style={{ color: '#64748b', fontSize: 14, margin: '4px 0 0' }}>Manage your client portfolio</p>
           </div>
-          <button onClick={() => { setShowForm(true); setEditingId(null); setFormData({ ...EMPTY_FORM }); setBrandFiles([]); setDocFiles([]); setActiveSection('basics'); }} style={s.btn('#3b82f6')}>
+          <button onClick={() => { setShowForm(true); setEditingId(null); setFormData({ ...EMPTY_FORM }); setBrandFiles([]); setDocFiles([]); setBrandLinkType('Logos'); setBrandLinkUrl(''); setBrandLinkNotes(''); setActiveSection('basics'); }} style={s.btn('#3b82f6')}>
             + Add Client
           </button>
         </div>
@@ -337,14 +349,30 @@ export default function ClientsPage() {
                   </div>
 
                   <div style={s.field}>
-                    <label style={s.label}>Brand Asset Links (multiple + typed)</label>
+                    <label style={s.label}>Brand Asset Links (multiple)</label>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr 2fr auto', gap: 8, marginBottom: 8 }}>
+                      <select style={s.input} value={brandLinkType} onChange={e => setBrandLinkType(e.target.value)}>
+                        <option>Logos</option>
+                        <option>Isotypes</option>
+                        <option>Voice & Tone</option>
+                        <option>Guidelines</option>
+                        <option>Templates</option>
+                        <option>Creative Assets</option>
+                        <option>Other</option>
+                      </select>
+                      <input style={s.input} value={brandLinkUrl} onChange={e => setBrandLinkUrl(e.target.value)} placeholder="https://..." />
+                      <input style={s.input} value={brandLinkNotes} onChange={e => setBrandLinkNotes(e.target.value)} placeholder="Notes (optional)" />
+                      <button type="button" onClick={addBrandLink} style={s.btn('#2563eb')}>Add</button>
+                    </div>
+
                     <textarea
                       style={s.textarea}
                       value={formData.brand_asset_links}
                       onChange={e => set('brand_asset_links', e.target.value)}
-                      placeholder={"One per line: Type | URL | Notes\nLogos | https://... | Main logo pack\nVoice & Tone | https://... | Brand voice guidelines\nTemplates | https://... | Social templates"}
+                      placeholder={"Added links will appear here (editable)."}
                     />
-                    <div style={s.hint}>Use types like: Logos, Isotypes, Voice & Tone, Guidelines, Templates, Creative Assets, Other.</div>
+                    <div style={s.hint}>No format memory needed — use the fields above and click Add.</div>
                   </div>
 
                   <div style={{ ...s.card, padding: 16 }}>
@@ -412,7 +440,7 @@ export default function ClientsPage() {
 
               <div style={{ display: 'flex', gap: 12, marginTop: 24, paddingTop: 16, borderTop: '1px solid #334155' }}>
                 <button type="submit" style={s.btn('#22c55e')}>{editingId ? 'Update' : 'Create'} Client</button>
-                <button type="button" onClick={() => { setShowForm(false); setEditingId(null); setFormData({ ...EMPTY_FORM }); setBrandFiles([]); setDocFiles([]); }} style={s.btn('#475569')}>Cancel</button>
+                <button type="button" onClick={() => { setShowForm(false); setEditingId(null); setFormData({ ...EMPTY_FORM }); setBrandFiles([]); setDocFiles([]); setBrandLinkType('Logos'); setBrandLinkUrl(''); setBrandLinkNotes(''); }} style={s.btn('#475569')}>Cancel</button>
               </div>
             </form>
           </div>
