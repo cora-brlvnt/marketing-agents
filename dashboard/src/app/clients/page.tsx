@@ -6,24 +6,28 @@ import AppShell from '@/components/AppShell';
 
 const supabase = getSupabase();
 
+type Section = 'basics' | 'brand' | 'integrations';
+type AssetFile = {
+  name: string;
+  path: string;
+  url: string;
+  type: string;
+  size: number;
+  uploaded_at: string;
+};
+
 const EMPTY_FORM = {
   name: '', email: '', company: '', industry: '', domain: '', website: '', website_assets: '',
   tone_of_voice: '', status: 'active', tagline: '', notes: '',
   poc_contacts: '',
 
-  colors_primary: '', colors_secondary: '', colors_accent: '',
-  typo_headline: '', typo_body: '',
-  logo_url: '', target_audiences: '', key_values: '',
-  brand_assets_hub: '', documents_links: '',
-
+  brand_assets_hub: '',
   social_instagram: '', social_linkedin: '', social_twitter: '', social_tiktok: '', social_facebook: '',
   social_meta: '', social_youtube: '', social_threads: '', social_pinterest: '', social_other: '',
 
   ga4_property_id: '', gsc_property: '', google_ads_id: '',
   integration_registry: '', enabled_channels: '',
 };
-
-type Section = 'basics' | 'brand' | 'integrations';
 
 export default function ClientsPage() {
   const [clients, setClients] = useState<any[]>([]);
@@ -33,6 +37,9 @@ export default function ClientsPage() {
   const [formData, setFormData] = useState({ ...EMPTY_FORM });
   const [activeSection, setActiveSection] = useState<Section>('basics');
   const [integrationPick, setIntegrationPick] = useState('GA4');
+  const [brandFiles, setBrandFiles] = useState<AssetFile[]>([]);
+  const [docFiles, setDocFiles] = useState<AssetFile[]>([]);
+  const [uploading, setUploading] = useState(false);
 
   useEffect(() => { fetchClients(); }, []);
 
@@ -57,17 +64,7 @@ export default function ClientsPage() {
       tagline: client.tagline || '',
       notes: client.notes || '',
       poc_contacts: client.visual_style?.poc_contacts || '',
-
-      colors_primary: client.colors?.primary || '',
-      colors_secondary: client.colors?.secondary || '',
-      colors_accent: client.colors?.accent || '',
-      typo_headline: client.typography?.headline_font || '',
-      typo_body: client.typography?.body_font || '',
-      logo_url: client.logo_url || '',
-      target_audiences: (client.target_audiences || []).join(', '),
-      key_values: (client.key_values || []).join(', '),
       brand_assets_hub: client.visual_style?.brand_assets_hub || '',
-      documents_links: client.visual_style?.documents_links || '',
 
       social_instagram: client.social_handles?.instagram || '',
       social_linkedin: client.social_handles?.linkedin || '',
@@ -99,30 +96,19 @@ export default function ClientsPage() {
       tone_of_voice: formData.tone_of_voice || null,
       status: formData.status,
       tagline: formData.tagline || null,
-      logo_url: formData.logo_url || null,
       notes: formData.notes || null,
 
       ga4_property_id: formData.ga4_property_id || null,
       gsc_property: formData.gsc_property || null,
       google_ads_id: formData.google_ads_id || null,
 
-      colors: {
-        primary: formData.colors_primary || null,
-        secondary: formData.colors_secondary || null,
-        accent: formData.colors_accent || null,
-      },
-      typography: {
-        headline_font: formData.typo_headline || null,
-        body_font: formData.typo_body || null,
-      },
       visual_style: {
         website_assets: formData.website_assets || null,
         poc_contacts: formData.poc_contacts || null,
-        documents_links: formData.documents_links || null,
         brand_assets_hub: formData.brand_assets_hub || null,
+        brand_files: brandFiles,
+        client_documents: docFiles,
       },
-      target_audiences: formData.target_audiences ? formData.target_audiences.split(',').map(s => s.trim()).filter(Boolean) : [],
-      key_values: formData.key_values ? formData.key_values.split(',').map(s => s.trim()).filter(Boolean) : [],
       ad_strategy: {
         integration_registry: formData.integration_registry || null,
         enabled_channels: formData.enabled_channels ? formData.enabled_channels.split(',').map(s => s.trim()).filter(Boolean) : [],
@@ -145,20 +131,32 @@ export default function ClientsPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const payload = buildPayload();
+
     if (editingId) {
       await supabase.from('clients').update(payload).eq('id', editingId);
     } else {
-      await supabase.from('clients').insert([payload]);
+      const { data, error } = await supabase.from('clients').insert([payload]).select('id').single();
+      if (!error && data?.id) {
+        setEditingId(data.id);
+      }
     }
-    setFormData({ ...EMPTY_FORM });
-    setEditingId(null);
-    setShowForm(false);
-    fetchClients();
+
+    await fetchClients();
+
+    if (editingId) {
+      setShowForm(false);
+      setEditingId(null);
+      setFormData({ ...EMPTY_FORM });
+      setBrandFiles([]);
+      setDocFiles([]);
+    }
   }
 
   function handleEdit(client: any) {
     setFormData(flattenForEdit(client));
     setEditingId(client.id);
+    setBrandFiles(client.visual_style?.brand_files || []);
+    setDocFiles(client.visual_style?.client_documents || []);
     setShowForm(true);
     setActiveSection('basics');
   }
@@ -169,25 +167,75 @@ export default function ClientsPage() {
     fetchClients();
   }
 
-  function addIntegrationFromPicker() {
-    const current = formData.enabled_channels
-      ? formData.enabled_channels.split(',').map(s => s.trim()).filter(Boolean)
-      : [];
+  async function uploadFiles(files: FileList | null, kind: 'brand' | 'documents') {
+    if (!files?.length) return;
+    if (!editingId) {
+      alert('Save the client first, then upload files.');
+      return;
+    }
 
+    setUploading(true);
+
+    try {
+      const uploaded: AssetFile[] = [];
+
+      for (const file of Array.from(files)) {
+        const safeName = file.name.replace(/\s+/g, '_');
+        const path = `clients/${editingId}/${kind}/${Date.now()}_${safeName}`;
+
+        const { error } = await supabase.storage.from('client-assets').upload(path, file);
+        if (error) throw error;
+
+        const { data } = supabase.storage.from('client-assets').getPublicUrl(path);
+
+        uploaded.push({
+          name: file.name,
+          path,
+          url: data.publicUrl,
+          type: file.type || 'application/octet-stream',
+          size: file.size,
+          uploaded_at: new Date().toISOString(),
+        });
+      }
+
+      if (kind === 'brand') {
+        setBrandFiles(prev => [...prev, ...uploaded]);
+      } else {
+        setDocFiles(prev => [...prev, ...uploaded]);
+      }
+    } catch (err: any) {
+      alert(`Upload failed: ${err?.message || 'Unknown error'}`);
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function removeFile(file: AssetFile, kind: 'brand' | 'documents') {
+    if (!confirm(`Remove ${file.name}?`)) return;
+
+    await supabase.storage.from('client-assets').remove([file.path]);
+
+    if (kind === 'brand') {
+      setBrandFiles(prev => prev.filter(f => f.path !== file.path));
+    } else {
+      setDocFiles(prev => prev.filter(f => f.path !== file.path));
+    }
+  }
+
+  function addIntegrationFromPicker() {
+    const current = formData.enabled_channels ? formData.enabled_channels.split(',').map(s => s.trim()).filter(Boolean) : [];
     if (!current.includes(integrationPick)) {
-      current.push(integrationPick);
-      set('enabled_channels', current.join(', '));
+      set('enabled_channels', [...current, integrationPick].join(', '));
     }
   }
 
   function removeIntegration(name: string) {
-    const current = formData.enabled_channels
-      ? formData.enabled_channels.split(',').map(s => s.trim()).filter(Boolean)
-      : [];
+    const current = formData.enabled_channels ? formData.enabled_channels.split(',').map(s => s.trim()).filter(Boolean) : [];
     set('enabled_channels', current.filter(x => x !== name).join(', '));
   }
 
   const set = (key: string, val: string) => setFormData(prev => ({ ...prev, [key]: val }));
+  const enabledChannels = formData.enabled_channels ? formData.enabled_channels.split(',').map(s => s.trim()).filter(Boolean) : [];
 
   const s = {
     card: { background: '#1e293b', borderRadius: 12, border: '1px solid #334155', padding: 24, marginBottom: 16 } as React.CSSProperties,
@@ -197,23 +245,13 @@ export default function ClientsPage() {
     row: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 } as React.CSSProperties,
     row3: { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 } as React.CSSProperties,
     textarea: { width: '100%', padding: '10px 14px', background: '#0f172a', border: '1px solid #334155', borderRadius: 8, color: '#e2e8f0', fontSize: 14, outline: 'none', minHeight: 90, resize: 'vertical' as const } as React.CSSProperties,
-    tab: (active: boolean) => ({
-      padding: '8px 16px', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 500,
-      background: active ? '#3b82f6' : '#334155', color: active ? '#fff' : '#94a3b8',
-    }) as React.CSSProperties,
+    tab: (active: boolean) => ({ padding: '8px 16px', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 500, background: active ? '#3b82f6' : '#334155', color: active ? '#fff' : '#94a3b8' }) as React.CSSProperties,
     sectionTitle: { color: '#e2e8f0', fontSize: 16, fontWeight: 600, marginBottom: 16 } as React.CSSProperties,
     hint: { color: '#64748b', fontSize: 11, marginTop: 4 } as React.CSSProperties,
     chip: { display: 'inline-flex', alignItems: 'center', gap: 8, background: '#334155', color: '#e2e8f0', fontSize: 12, borderRadius: 999, padding: '6px 10px' } as React.CSSProperties,
-    btn: (color: string) => ({
-      padding: '8px 20px', borderRadius: 8, border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: 14,
-      background: color, color: '#fff',
-    }) as React.CSSProperties,
+    btn: (color: string) => ({ padding: '8px 20px', borderRadius: 8, border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: 14, background: color, color: '#fff' }) as React.CSSProperties,
     clientCard: { background: '#1e293b', borderRadius: 10, border: '1px solid #334155', padding: 20, marginBottom: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' } as React.CSSProperties,
   };
-
-  const enabledChannels = formData.enabled_channels
-    ? formData.enabled_channels.split(',').map(s => s.trim()).filter(Boolean)
-    : [];
 
   return (
     <AppShell>
@@ -223,7 +261,7 @@ export default function ClientsPage() {
             <h1 style={{ fontSize: 28, fontWeight: 700, color: '#fff', margin: 0 }}>Clients</h1>
             <p style={{ color: '#64748b', fontSize: 14, margin: '4px 0 0' }}>Manage your client portfolio</p>
           </div>
-          <button onClick={() => { setShowForm(true); setEditingId(null); setFormData({ ...EMPTY_FORM }); setActiveSection('basics'); }} style={s.btn('#3b82f6')}>
+          <button onClick={() => { setShowForm(true); setEditingId(null); setFormData({ ...EMPTY_FORM }); setBrandFiles([]); setDocFiles([]); setActiveSection('basics'); }} style={s.btn('#3b82f6')}>
             + Add Client
           </button>
         </div>
@@ -252,169 +290,79 @@ export default function ClientsPage() {
                 <div>
                   <div style={s.sectionTitle}>Basic Information</div>
                   <div style={s.row}>
-                    <div style={s.field}>
-                      <label style={s.label}>Name *</label>
-                      <input style={s.input} value={formData.name} onChange={e => set('name', e.target.value)} placeholder="Client name" required />
-                    </div>
-                    <div style={s.field}>
-                      <label style={s.label}>Company</label>
-                      <input style={s.input} value={formData.company} onChange={e => set('company', e.target.value)} placeholder="Company name" />
-                    </div>
+                    <div style={s.field}><label style={s.label}>Name *</label><input style={s.input} value={formData.name} onChange={e => set('name', e.target.value)} placeholder="Client name" required /></div>
+                    <div style={s.field}><label style={s.label}>Company</label><input style={s.input} value={formData.company} onChange={e => set('company', e.target.value)} placeholder="Company name" /></div>
                   </div>
-
                   <div style={s.row}>
-                    <div style={s.field}>
-                      <label style={s.label}>Email</label>
-                      <input style={s.input} type="email" value={formData.email} onChange={e => set('email', e.target.value)} placeholder="contact@client.com" />
-                    </div>
-                    <div style={s.field}>
-                      <label style={s.label}>Industry</label>
-                      <input style={s.input} value={formData.industry} onChange={e => set('industry', e.target.value)} placeholder="e.g. Fintech, SaaS, E-commerce" />
-                    </div>
+                    <div style={s.field}><label style={s.label}>Email</label><input style={s.input} type="email" value={formData.email} onChange={e => set('email', e.target.value)} placeholder="contact@client.com" /></div>
+                    <div style={s.field}><label style={s.label}>Industry</label><input style={s.input} value={formData.industry} onChange={e => set('industry', e.target.value)} placeholder="e.g. Fintech, SaaS, E-commerce" /></div>
                   </div>
-
                   <div style={s.row}>
-                    <div style={s.field}>
-                      <label style={s.label}>Primary Website (Root Domain)</label>
-                      <input style={s.input} value={formData.domain} onChange={e => set('domain', e.target.value)} placeholder="client.com" />
-                      <div style={s.hint}>Canonical domain used for analytics property mapping.</div>
-                    </div>
-                    <div style={s.field}>
-                      <label style={s.label}>Primary URL</label>
-                      <input style={s.input} value={formData.website} onChange={e => set('website', e.target.value)} placeholder="https://client.com" />
-                    </div>
+                    <div style={s.field}><label style={s.label}>Primary Website (Root Domain)</label><input style={s.input} value={formData.domain} onChange={e => set('domain', e.target.value)} placeholder="client.com" /><div style={s.hint}>Canonical domain for analytics mapping.</div></div>
+                    <div style={s.field}><label style={s.label}>Primary URL</label><input style={s.input} value={formData.website} onChange={e => set('website', e.target.value)} placeholder="https://client.com" /></div>
                   </div>
-
-                  <div style={s.field}>
-                    <label style={s.label}>Additional Web Assets</label>
-                    <textarea
-                      style={s.textarea}
-                      value={formData.website_assets}
-                      onChange={e => set('website_assets', e.target.value)}
-                      placeholder={'Subdomains, folders, microsites (one per line)\nblog.client.com\nclient.com/es/\nlanding.client.com/campaign'}
-                    />
-                  </div>
-
-                  <div style={s.field}>
-                    <label style={s.label}>Points of Contact (Multiple)</label>
-                    <textarea
-                      style={s.textarea}
-                      value={formData.poc_contacts}
-                      onChange={e => set('poc_contacts', e.target.value)}
-                      placeholder={'One per line: Name | Role | Email | Phone\nJane Doe | Marketing Lead | jane@client.com | +1 ...'}
-                    />
-                  </div>
-
+                  <div style={s.field}><label style={s.label}>Additional Web Assets</label><textarea style={s.textarea} value={formData.website_assets} onChange={e => set('website_assets', e.target.value)} placeholder={'Subdomains/folders, one per line\nblog.client.com\nclient.com/es/'} /></div>
+                  <div style={s.field}><label style={s.label}>Points of Contact (Multiple)</label><textarea style={s.textarea} value={formData.poc_contacts} onChange={e => set('poc_contacts', e.target.value)} placeholder={'One per line: Name | Role | Email | Phone'} /></div>
                   <div style={s.row}>
-                    <div style={s.field}>
-                      <label style={s.label}>Tagline</label>
-                      <input style={s.input} value={formData.tagline} onChange={e => set('tagline', e.target.value)} placeholder="Your brand tagline" />
-                    </div>
-                    <div style={s.field}>
-                      <label style={s.label}>Status</label>
-                      <select style={s.input} value={formData.status} onChange={e => set('status', e.target.value)}>
-                        <option value="active">Active</option>
-                        <option value="inactive">Inactive</option>
-                      </select>
-                    </div>
+                    <div style={s.field}><label style={s.label}>Tagline</label><input style={s.input} value={formData.tagline} onChange={e => set('tagline', e.target.value)} placeholder="Brand tagline" /></div>
+                    <div style={s.field}><label style={s.label}>Status</label><select style={s.input} value={formData.status} onChange={e => set('status', e.target.value)}><option value="active">Active</option><option value="inactive">Inactive</option></select></div>
                   </div>
 
                   <div style={s.sectionTitle}>Social Properties</div>
-                  <div style={s.row}>
-                    <div style={s.field}><label style={s.label}>Instagram</label><input style={s.input} value={formData.social_instagram} onChange={e => set('social_instagram', e.target.value)} placeholder="@handle" /></div>
-                    <div style={s.field}><label style={s.label}>LinkedIn</label><input style={s.input} value={formData.social_linkedin} onChange={e => set('social_linkedin', e.target.value)} placeholder="company/name" /></div>
-                  </div>
-                  <div style={s.row3}>
-                    <div style={s.field}><label style={s.label}>X / Twitter</label><input style={s.input} value={formData.social_twitter} onChange={e => set('social_twitter', e.target.value)} placeholder="@handle" /></div>
-                    <div style={s.field}><label style={s.label}>TikTok</label><input style={s.input} value={formData.social_tiktok} onChange={e => set('social_tiktok', e.target.value)} placeholder="@handle" /></div>
-                    <div style={s.field}><label style={s.label}>Facebook</label><input style={s.input} value={formData.social_facebook} onChange={e => set('social_facebook', e.target.value)} placeholder="page name" /></div>
-                  </div>
-                  <div style={s.row3}>
-                    <div style={s.field}><label style={s.label}>Meta Business</label><input style={s.input} value={formData.social_meta} onChange={e => set('social_meta', e.target.value)} placeholder="Business Manager / ad account" /></div>
-                    <div style={s.field}><label style={s.label}>YouTube</label><input style={s.input} value={formData.social_youtube} onChange={e => set('social_youtube', e.target.value)} placeholder="Channel URL" /></div>
-                    <div style={s.field}><label style={s.label}>Threads</label><input style={s.input} value={formData.social_threads} onChange={e => set('social_threads', e.target.value)} placeholder="@handle" /></div>
-                  </div>
-                  <div style={s.row}>
-                    <div style={s.field}><label style={s.label}>Pinterest</label><input style={s.input} value={formData.social_pinterest} onChange={e => set('social_pinterest', e.target.value)} placeholder="Profile URL" /></div>
-                    <div style={s.field}><label style={s.label}>Other Social</label><input style={s.input} value={formData.social_other} onChange={e => set('social_other', e.target.value)} placeholder="Any additional channels" /></div>
-                  </div>
+                  <div style={s.row}><div style={s.field}><label style={s.label}>Instagram</label><input style={s.input} value={formData.social_instagram} onChange={e => set('social_instagram', e.target.value)} placeholder="@handle" /></div><div style={s.field}><label style={s.label}>LinkedIn</label><input style={s.input} value={formData.social_linkedin} onChange={e => set('social_linkedin', e.target.value)} placeholder="company/page" /></div></div>
+                  <div style={s.row3}><div style={s.field}><label style={s.label}>X / Twitter</label><input style={s.input} value={formData.social_twitter} onChange={e => set('social_twitter', e.target.value)} /></div><div style={s.field}><label style={s.label}>TikTok</label><input style={s.input} value={formData.social_tiktok} onChange={e => set('social_tiktok', e.target.value)} /></div><div style={s.field}><label style={s.label}>Facebook</label><input style={s.input} value={formData.social_facebook} onChange={e => set('social_facebook', e.target.value)} /></div></div>
+                  <div style={s.row3}><div style={s.field}><label style={s.label}>Meta Business</label><input style={s.input} value={formData.social_meta} onChange={e => set('social_meta', e.target.value)} /></div><div style={s.field}><label style={s.label}>YouTube</label><input style={s.input} value={formData.social_youtube} onChange={e => set('social_youtube', e.target.value)} /></div><div style={s.field}><label style={s.label}>Threads</label><input style={s.input} value={formData.social_threads} onChange={e => set('social_threads', e.target.value)} /></div></div>
+                  <div style={s.row}><div style={s.field}><label style={s.label}>Pinterest</label><input style={s.input} value={formData.social_pinterest} onChange={e => set('social_pinterest', e.target.value)} /></div><div style={s.field}><label style={s.label}>Other</label><input style={s.input} value={formData.social_other} onChange={e => set('social_other', e.target.value)} /></div></div>
 
-                  <div style={s.field}>
-                    <label style={s.label}>Notes</label>
-                    <textarea style={s.textarea} value={formData.notes} onChange={e => set('notes', e.target.value)} placeholder="Any additional context about this client..." />
-                  </div>
+                  <div style={s.field}><label style={s.label}>Notes</label><textarea style={s.textarea} value={formData.notes} onChange={e => set('notes', e.target.value)} placeholder="Additional context" /></div>
                 </div>
               )}
 
               {activeSection === 'brand' && (
                 <div>
-                  <div style={s.sectionTitle}>Brand & Asset Hub</div>
+                  <div style={s.sectionTitle}>Brand Asset Intake</div>
+                  <p style={{ color: '#64748b', fontSize: 13, marginBottom: 16 }}>No manual brand fields. Upload source files (guidelines, logos, contracts, briefs) directly.</p>
 
                   <div style={s.field}>
-                    <label style={s.label}>Tone of Voice</label>
-                    <input style={s.input} value={formData.tone_of_voice} onChange={e => set('tone_of_voice', e.target.value)} placeholder="e.g. Professional, Bold, Friendly, Authoritative" />
+                    <label style={s.label}>Tone of Voice (optional)</label>
+                    <input style={s.input} value={formData.tone_of_voice} onChange={e => set('tone_of_voice', e.target.value)} placeholder="Can be filled later from brand docs" />
                   </div>
 
-                  <div style={s.row3}>
-                    <div style={s.field}>
-                      <label style={s.label}>Primary Color</label>
-                      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                        <input type="color" value={formData.colors_primary || '#1a1a1a'} onChange={e => set('colors_primary', e.target.value)} style={{ width: 36, height: 36, border: 'none', borderRadius: 4, cursor: 'pointer' }} />
-                        <input style={{ ...s.input, flex: 1 }} value={formData.colors_primary} onChange={e => set('colors_primary', e.target.value)} placeholder="#1a1a1a" />
+                  <div style={s.field}>
+                    <label style={s.label}>Brand Asset Hub (optional folder link)</label>
+                    <input style={s.input} value={formData.brand_assets_hub} onChange={e => set('brand_assets_hub', e.target.value)} placeholder="Drive/Dropbox/etc (optional)" />
+                  </div>
+
+                  <div style={{ ...s.card, padding: 16 }}>
+                    <label style={s.label}>Upload Brand Files (logos, guidelines, assets)</label>
+                    <input type="file" multiple onChange={e => uploadFiles(e.target.files, 'brand')} disabled={!editingId || uploading} />
+                    {!editingId && <div style={s.hint}>Save client first to enable uploads.</div>}
+                    {brandFiles.length > 0 && (
+                      <div style={{ marginTop: 12, display: 'grid', gap: 8 }}>
+                        {brandFiles.map(file => (
+                          <div key={file.path} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#0f172a', padding: 8, borderRadius: 6 }}>
+                            <a href={file.url} target="_blank" style={{ color: '#93c5fd', textDecoration: 'none' }}>{file.name}</a>
+                            <button type="button" onClick={() => removeFile(file, 'brand')} style={s.btn('#b91c1c')}>Remove</button>
+                          </div>
+                        ))}
                       </div>
-                    </div>
-                    <div style={s.field}>
-                      <label style={s.label}>Secondary Color</label>
-                      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                        <input type="color" value={formData.colors_secondary || '#0f7ba7'} onChange={e => set('colors_secondary', e.target.value)} style={{ width: 36, height: 36, border: 'none', borderRadius: 4, cursor: 'pointer' }} />
-                        <input style={{ ...s.input, flex: 1 }} value={formData.colors_secondary} onChange={e => set('colors_secondary', e.target.value)} placeholder="#0f7ba7" />
+                    )}
+                  </div>
+
+                  <div style={{ ...s.card, padding: 16, marginTop: 16 }}>
+                    <label style={s.label}>Upload Client Documents (SOW, contracts, briefs)</label>
+                    <input type="file" multiple onChange={e => uploadFiles(e.target.files, 'documents')} disabled={!editingId || uploading} />
+                    {!editingId && <div style={s.hint}>Save client first to enable uploads.</div>}
+                    {docFiles.length > 0 && (
+                      <div style={{ marginTop: 12, display: 'grid', gap: 8 }}>
+                        {docFiles.map(file => (
+                          <div key={file.path} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#0f172a', padding: 8, borderRadius: 6 }}>
+                            <a href={file.url} target="_blank" style={{ color: '#93c5fd', textDecoration: 'none' }}>{file.name}</a>
+                            <button type="button" onClick={() => removeFile(file, 'documents')} style={s.btn('#b91c1c')}>Remove</button>
+                          </div>
+                        ))}
                       </div>
-                    </div>
-                    <div style={s.field}>
-                      <label style={s.label}>Accent Color</label>
-                      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                        <input type="color" value={formData.colors_accent || '#e8e4df'} onChange={e => set('colors_accent', e.target.value)} style={{ width: 36, height: 36, border: 'none', borderRadius: 4, cursor: 'pointer' }} />
-                        <input style={{ ...s.input, flex: 1 }} value={formData.colors_accent} onChange={e => set('colors_accent', e.target.value)} placeholder="#e8e4df" />
-                      </div>
-                    </div>
-                  </div>
-
-                  <div style={s.row}>
-                    <div style={s.field}>
-                      <label style={s.label}>Headline Font</label>
-                      <input style={s.input} value={formData.typo_headline} onChange={e => set('typo_headline', e.target.value)} placeholder="e.g. Inter, Playfair Display" />
-                    </div>
-                    <div style={s.field}>
-                      <label style={s.label}>Body Font</label>
-                      <input style={s.input} value={formData.typo_body} onChange={e => set('typo_body', e.target.value)} placeholder="e.g. Inter, Open Sans" />
-                    </div>
-                  </div>
-
-                  <div style={s.field}>
-                    <label style={s.label}>Brand Asset Hub (Drive Folder Link)</label>
-                    <input style={s.input} value={formData.brand_assets_hub} onChange={e => set('brand_assets_hub', e.target.value)} placeholder="https://drive.google.com/..." />
-                    <div style={s.hint}>Use this for logos, isotypes, guidelines, templates, and approved assets.</div>
-                  </div>
-
-                  <div style={s.field}>
-                    <label style={s.label}>Documents (SOW / Contract / Briefs)</label>
-                    <textarea style={s.textarea} value={formData.documents_links} onChange={e => set('documents_links', e.target.value)} placeholder={'Paste one link per line\nSOW, contract, onboarding brief, etc.'} />
-                  </div>
-
-                  <div style={s.row}>
-                    <div style={s.field}>
-                      <label style={s.label}>Primary Logo URL (optional)</label>
-                      <input style={s.input} value={formData.logo_url} onChange={e => set('logo_url', e.target.value)} placeholder="https://..." />
-                    </div>
-                    <div style={s.field}>
-                      <label style={s.label}>Target Audiences</label>
-                      <input style={s.input} value={formData.target_audiences} onChange={e => set('target_audiences', e.target.value)} placeholder="Comma-separated" />
-                    </div>
-                  </div>
-
-                  <div style={s.field}>
-                    <label style={s.label}>Key Brand Values</label>
-                    <input style={s.input} value={formData.key_values} onChange={e => set('key_values', e.target.value)} placeholder="Trust, Innovation, Simplicity" />
+                    )}
                   </div>
                 </div>
               )}
@@ -422,77 +370,35 @@ export default function ClientsPage() {
               {activeSection === 'integrations' && (
                 <div>
                   <div style={s.sectionTitle}>Integrations & Digital Channels</div>
-                  <p style={{ color: '#64748b', fontSize: 13, marginBottom: 16 }}>
-                    Flexible registry. Add only channels in scope (Meta Ads, Bing Ads, etc.).
-                  </p>
-
                   <div style={s.row}>
                     <div style={s.field}>
                       <label style={s.label}>Add Channel / Integration</label>
                       <div style={{ display: 'flex', gap: 8 }}>
                         <select style={s.input} value={integrationPick} onChange={e => setIntegrationPick(e.target.value)}>
-                          <option>GA4</option>
-                          <option>GSC</option>
-                          <option>GTM</option>
-                          <option>Google Ads</option>
-                          <option>Meta Ads</option>
-                          <option>Bing Ads</option>
-                          <option>LinkedIn Ads</option>
-                          <option>TikTok Ads</option>
-                          <option>Email/CRM</option>
-                          <option>SEO</option>
-                          <option>Web/CRO</option>
+                          <option>GA4</option><option>GSC</option><option>GTM</option><option>Google Ads</option><option>Meta Ads</option><option>Bing Ads</option><option>LinkedIn Ads</option><option>TikTok Ads</option><option>Email/CRM</option><option>SEO</option><option>Web/CRO</option>
                         </select>
                         <button type="button" onClick={addIntegrationFromPicker} style={s.btn('#2563eb')}>Add</button>
                       </div>
                     </div>
-                    <div style={s.field}>
-                      <label style={s.label}>Enabled (CSV)</label>
-                      <input style={s.input} value={formData.enabled_channels} onChange={e => set('enabled_channels', e.target.value)} placeholder="GA4, Meta Ads, Bing Ads" />
-                    </div>
+                    <div style={s.field}><label style={s.label}>Enabled (CSV)</label><input style={s.input} value={formData.enabled_channels} onChange={e => set('enabled_channels', e.target.value)} placeholder="GA4, Meta Ads, Bing Ads" /></div>
                   </div>
 
                   {enabledChannels.length > 0 && (
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
                       {enabledChannels.map(ch => (
-                        <span key={ch} style={s.chip}>
-                          {ch}
-                          <button type="button" onClick={() => removeIntegration(ch)} style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer' }}>✕</button>
-                        </span>
+                        <span key={ch} style={s.chip}>{ch}<button type="button" onClick={() => removeIntegration(ch)} style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer' }}>✕</button></span>
                       ))}
                     </div>
                   )}
 
-                  <div style={s.field}>
-                    <label style={s.label}>Integration Registry (details)</label>
-                    <textarea
-                      style={s.textarea}
-                      value={formData.integration_registry}
-                      onChange={e => set('integration_registry', e.target.value)}
-                      placeholder={'One per line: Integration | Property/Account ID | Status | Notes\nMeta Ads | act_12345 | pending_access | need partner access'}
-                    />
-                  </div>
-
-                  <div style={s.row3}>
-                    <div style={s.field}>
-                      <label style={s.label}>GSC Property</label>
-                      <input style={s.input} value={formData.gsc_property} onChange={e => set('gsc_property', e.target.value)} placeholder="sc-domain:client.com" />
-                    </div>
-                    <div style={s.field}>
-                      <label style={s.label}>GA4 Property ID</label>
-                      <input style={s.input} value={formData.ga4_property_id} onChange={e => set('ga4_property_id', e.target.value)} placeholder="properties/123456789" />
-                    </div>
-                    <div style={s.field}>
-                      <label style={s.label}>Google Ads Account ID</label>
-                      <input style={s.input} value={formData.google_ads_id} onChange={e => set('google_ads_id', e.target.value)} placeholder="123-456-7890" />
-                    </div>
-                  </div>
+                  <div style={s.field}><label style={s.label}>Integration Registry Details</label><textarea style={s.textarea} value={formData.integration_registry} onChange={e => set('integration_registry', e.target.value)} placeholder={'One per line: Integration | Account/Property ID | Status | Notes'} /></div>
+                  <div style={s.row3}><div style={s.field}><label style={s.label}>GSC Property</label><input style={s.input} value={formData.gsc_property} onChange={e => set('gsc_property', e.target.value)} /></div><div style={s.field}><label style={s.label}>GA4 Property ID</label><input style={s.input} value={formData.ga4_property_id} onChange={e => set('ga4_property_id', e.target.value)} /></div><div style={s.field}><label style={s.label}>Google Ads Account ID</label><input style={s.input} value={formData.google_ads_id} onChange={e => set('google_ads_id', e.target.value)} /></div></div>
                 </div>
               )}
 
               <div style={{ display: 'flex', gap: 12, marginTop: 24, paddingTop: 16, borderTop: '1px solid #334155' }}>
                 <button type="submit" style={s.btn('#22c55e')}>{editingId ? 'Update' : 'Create'} Client</button>
-                <button type="button" onClick={() => { setShowForm(false); setEditingId(null); }} style={s.btn('#475569')}>Cancel</button>
+                <button type="button" onClick={() => { setShowForm(false); setEditingId(null); setFormData({ ...EMPTY_FORM }); setBrandFiles([]); setDocFiles([]); }} style={s.btn('#475569')}>Cancel</button>
               </div>
             </form>
           </div>
@@ -501,29 +407,20 @@ export default function ClientsPage() {
         {loading ? (
           <p style={{ color: '#64748b', textAlign: 'center', padding: 40 }}>Loading...</p>
         ) : clients.length === 0 ? (
-          <div style={{ ...s.card, textAlign: 'center', padding: 60 }}>
-            <p style={{ color: '#64748b', fontSize: 16 }}>No clients yet. Add your first client to get started.</p>
-          </div>
+          <div style={{ ...s.card, textAlign: 'center', padding: 60 }}><p style={{ color: '#64748b', fontSize: 16 }}>No clients yet. Add your first client to get started.</p></div>
         ) : (
           clients.map(client => (
             <div key={client.id} style={s.clientCard}>
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 4 }}>
                   <span style={{ color: '#fff', fontSize: 16, fontWeight: 600 }}>{client.name}</span>
-                  <span style={{
-                    background: client.status === 'active' ? '#166534' : '#334155',
-                    color: client.status === 'active' ? '#4ade80' : '#94a3b8',
-                    padding: '2px 8px', borderRadius: 4, fontSize: 11, fontWeight: 500,
-                  }}>{client.status}</span>
+                  <span style={{ background: client.status === 'active' ? '#166534' : '#334155', color: client.status === 'active' ? '#4ade80' : '#94a3b8', padding: '2px 8px', borderRadius: 4, fontSize: 11, fontWeight: 500 }}>{client.status}</span>
                 </div>
                 <div style={{ display: 'flex', gap: 16, color: '#64748b', fontSize: 13 }}>
                   {client.company && <span>{client.company}</span>}
                   {client.industry && <span>• {client.industry}</span>}
                   {client.domain && <span>• {client.domain}</span>}
                 </div>
-                {client.tone_of_voice && (
-                  <div style={{ color: '#94a3b8', fontSize: 12, marginTop: 4 }}>Voice: {client.tone_of_voice}</div>
-                )}
               </div>
               <div style={{ display: 'flex', gap: 8 }}>
                 <button onClick={() => handleEdit(client)} style={s.btn('#3b82f6')}>Edit</button>
