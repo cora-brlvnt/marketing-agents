@@ -16,6 +16,36 @@ type AssetFile = {
   uploaded_at: string;
 };
 
+type BrandLink = {
+  type: string;
+  url: string;
+  notes: string;
+};
+
+function parseBrandLinks(value: any): BrandLink[] {
+  if (!value) return [];
+
+  if (Array.isArray(value)) {
+    return value
+      .map((v: any) => ({ type: String(v?.type || 'Other'), url: String(v?.url || ''), notes: String(v?.notes || '') }))
+      .filter((v: BrandLink) => v.url.trim().length > 0);
+  }
+
+  if (typeof value === 'string') {
+    return value
+      .split('\n')
+      .map((line: string) => line.trim())
+      .filter(Boolean)
+      .map((line: string) => {
+        const [type = 'Other', url = '', notes = ''] = line.split('|').map((p: string) => p.trim());
+        return { type, url, notes };
+      })
+      .filter((v: BrandLink) => v.url.length > 0);
+  }
+
+  return [];
+}
+
 const EMPTY_FORM = {
   name: '', email: '', company: '', industry: '', domain: '', website: '', website_assets: '',
   status: 'active', tagline: '', notes: '',
@@ -41,6 +71,7 @@ export default function ClientsPage() {
   const [brandLinkType, setBrandLinkType] = useState('Logos');
   const [brandLinkUrl, setBrandLinkUrl] = useState('');
   const [brandLinkNotes, setBrandLinkNotes] = useState('');
+  const [brandLinks, setBrandLinks] = useState<BrandLink[]>([]);
   const [brandFiles, setBrandFiles] = useState<AssetFile[]>([]);
   const [docFiles, setDocFiles] = useState<AssetFile[]>([]);
   const [uploading, setUploading] = useState(false);
@@ -109,7 +140,7 @@ export default function ClientsPage() {
         website_assets: formData.website_assets || null,
         poc_contacts: formData.poc_contacts || null,
         brand_assets_hub: formData.brand_assets_hub || null,
-        brand_asset_links: formData.brand_asset_links || null,
+        brand_asset_links: brandLinks,
         brand_files: brandFiles,
         client_documents: docFiles,
       },
@@ -151,6 +182,7 @@ export default function ClientsPage() {
       setShowForm(false);
       setEditingId(null);
       setFormData({ ...EMPTY_FORM });
+      setBrandLinks([]);
       setBrandFiles([]);
       setDocFiles([]);
     }
@@ -159,6 +191,7 @@ export default function ClientsPage() {
   function handleEdit(client: any) {
     setFormData(flattenForEdit(client));
     setEditingId(client.id);
+    setBrandLinks(parseBrandLinks(client.visual_style?.brand_asset_links));
     setBrandFiles(client.visual_style?.brand_files || []);
     setDocFiles(client.visual_style?.client_documents || []);
     setShowForm(true);
@@ -240,11 +273,13 @@ export default function ClientsPage() {
 
   function addBrandLink() {
     if (!brandLinkUrl.trim()) return;
-    const line = `${brandLinkType} | ${brandLinkUrl.trim()} | ${brandLinkNotes.trim() || '-'}`;
-    const next = formData.brand_asset_links ? `${formData.brand_asset_links}\n${line}` : line;
-    set('brand_asset_links', next);
+    setBrandLinks(prev => [...prev, { type: brandLinkType, url: brandLinkUrl.trim(), notes: brandLinkNotes.trim() }]);
     setBrandLinkUrl('');
     setBrandLinkNotes('');
+  }
+
+  function removeBrandLink(index: number) {
+    setBrandLinks(prev => prev.filter((_, i) => i !== index));
   }
 
   const set = (key: string, val: string) => setFormData(prev => ({ ...prev, [key]: val }));
@@ -274,7 +309,7 @@ export default function ClientsPage() {
             <h1 style={{ fontSize: 28, fontWeight: 700, color: '#fff', margin: 0 }}>Clients</h1>
             <p style={{ color: '#64748b', fontSize: 14, margin: '4px 0 0' }}>Manage your client portfolio</p>
           </div>
-          <button onClick={() => { setShowForm(true); setEditingId(null); setFormData({ ...EMPTY_FORM }); setBrandFiles([]); setDocFiles([]); setBrandLinkType('Logos'); setBrandLinkUrl(''); setBrandLinkNotes(''); setActiveSection('basics'); }} style={s.btn('#3b82f6')}>
+          <button onClick={() => { setShowForm(true); setEditingId(null); setFormData({ ...EMPTY_FORM }); setBrandLinks([]); setBrandFiles([]); setDocFiles([]); setBrandLinkType('Logos'); setBrandLinkUrl(''); setBrandLinkNotes(''); setActiveSection('basics'); }} style={s.btn('#3b82f6')}>
             + Add Client
           </button>
         </div>
@@ -359,12 +394,20 @@ export default function ClientsPage() {
                       <button type="button" onClick={addBrandLink} style={s.btn('#2563eb')}>Add</button>
                     </div>
 
-                    <textarea
-                      style={s.textarea}
-                      value={formData.brand_asset_links}
-                      onChange={e => set('brand_asset_links', e.target.value)}
-                      placeholder={"Added links will appear here (editable)."}
-                    />
+                    {brandLinks.length === 0 ? (
+                      <div style={{ ...s.hint, marginTop: 8 }}>No links added yet.</div>
+                    ) : (
+                      <div style={{ marginTop: 8, display: 'grid', gap: 8 }}>
+                        {brandLinks.map((link, idx) => (
+                          <div key={`${link.url}-${idx}`} style={{ display: 'grid', gridTemplateColumns: '1fr 2fr 2fr auto', gap: 8, alignItems: 'center', background: '#0f172a', padding: 8, borderRadius: 6 }}>
+                            <div style={{ color: '#e2e8f0', fontSize: 13 }}>{link.type}</div>
+                            <a href={link.url} target="_blank" style={{ color: '#93c5fd', textDecoration: 'none', fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{link.url}</a>
+                            <div style={{ color: '#cbd5e1', fontSize: 13 }}>{link.notes || '-'}</div>
+                            <button type="button" onClick={() => removeBrandLink(idx)} style={s.btn('#b91c1c')}>Remove</button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                     <div style={s.hint}>No format memory needed — use the fields above and click Add.</div>
                   </div>
 
@@ -433,7 +476,7 @@ export default function ClientsPage() {
 
               <div style={{ display: 'flex', gap: 12, marginTop: 24, paddingTop: 16, borderTop: '1px solid #334155' }}>
                 <button type="submit" style={s.btn('#22c55e')}>{editingId ? 'Update' : 'Create'} Client</button>
-                <button type="button" onClick={() => { setShowForm(false); setEditingId(null); setFormData({ ...EMPTY_FORM }); setBrandFiles([]); setDocFiles([]); setBrandLinkType('Logos'); setBrandLinkUrl(''); setBrandLinkNotes(''); }} style={s.btn('#475569')}>Cancel</button>
+                <button type="button" onClick={() => { setShowForm(false); setEditingId(null); setFormData({ ...EMPTY_FORM }); setBrandLinks([]); setBrandFiles([]); setDocFiles([]); setBrandLinkType('Logos'); setBrandLinkUrl(''); setBrandLinkNotes(''); }} style={s.btn('#475569')}>Cancel</button>
               </div>
             </form>
           </div>
