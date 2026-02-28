@@ -22,6 +22,7 @@ const EMPTY_FORM = {
   poc_contacts: '',
 
   brand_assets_hub: '',
+  brand_asset_links: '',
   social_instagram: '', social_linkedin: '', social_twitter: '', social_tiktok: '', social_facebook: '',
   social_meta: '', social_youtube: '', social_threads: '', social_pinterest: '', social_other: '',
 
@@ -65,6 +66,7 @@ export default function ClientsPage() {
       notes: client.notes || '',
       poc_contacts: client.visual_style?.poc_contacts || '',
       brand_assets_hub: client.visual_style?.brand_assets_hub || '',
+      brand_asset_links: client.visual_style?.brand_asset_links || '',
 
       social_instagram: client.social_handles?.instagram || '',
       social_linkedin: client.social_handles?.linkedin || '',
@@ -106,6 +108,7 @@ export default function ClientsPage() {
         website_assets: formData.website_assets || null,
         poc_contacts: formData.poc_contacts || null,
         brand_assets_hub: formData.brand_assets_hub || null,
+        brand_asset_links: formData.brand_asset_links || null,
         brand_files: brandFiles,
         client_documents: docFiles,
       },
@@ -329,8 +332,19 @@ export default function ClientsPage() {
                   </div>
 
                   <div style={s.field}>
-                    <label style={s.label}>Brand Asset Hub (optional folder link)</label>
-                    <input style={s.input} value={formData.brand_assets_hub} onChange={e => set('brand_assets_hub', e.target.value)} placeholder="Drive/Dropbox/etc (optional)" />
+                    <label style={s.label}>Primary Brand Asset Hub (optional)</label>
+                    <input style={s.input} value={formData.brand_assets_hub} onChange={e => set('brand_assets_hub', e.target.value)} placeholder="Drive/Dropbox/etc main folder" />
+                  </div>
+
+                  <div style={s.field}>
+                    <label style={s.label}>Brand Asset Links (multiple + typed)</label>
+                    <textarea
+                      style={s.textarea}
+                      value={formData.brand_asset_links}
+                      onChange={e => set('brand_asset_links', e.target.value)}
+                      placeholder={"One per line: Type | URL | Notes\nLogos | https://... | Main logo pack\nVoice & Tone | https://... | Brand voice guidelines\nTemplates | https://... | Social templates"}
+                    />
+                    <div style={s.hint}>Use types like: Logos, Isotypes, Voice & Tone, Guidelines, Templates, Creative Assets, Other.</div>
                   </div>
 
                   <div style={{ ...s.card, padding: 16 }}>
